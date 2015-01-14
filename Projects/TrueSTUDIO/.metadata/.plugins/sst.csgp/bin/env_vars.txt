@@ -1,0 +1,4 @@
+D:\truestudio\TrueSTUDIO for ARM Lite 5.2.1\ide\plugins\sst.tm_1.1.2.201408221116\CSHOME\
+D:\truestudio\TrueSTUDIO for ARM Lite 5.2.1\ide\plugins\sst.csgp_1.0.5.201408221116\CSHOME
+D:\truestudio\TrueSTUDIO for ARM Lite 5.2.1\ARMTools
+Z:\stuff\reprap\Firmwares\stm32l100discovery\cubemxprojects\t2\Projects\TrueSTUDIO\.metadata\.plugins\sst.tm
