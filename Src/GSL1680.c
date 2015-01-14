@@ -65,7 +65,7 @@ bool i2c_write(uint8_t reg, uint8_t *buf, int cnt)
     printf("\r\n");
 #endif
 
-    uint8_t pData[cnt+1];
+    uint8_t pData[cnt + 1];
     pData[0] = reg;
     memcpy(&pData[1], buf, cnt);
     HAL_StatusTypeDef r = HAL_I2C_Master_Transmit(&hi2c1, GSLX680_I2C_ADDR, pData, cnt + 1, 1000);
@@ -150,25 +150,25 @@ void load_fw(void)
     uint source_len = sizeof(GSLX680_FW) / sizeof(struct fw_data);
 
     // write in blocks of 32 bytes to speed up download
-    int i= 0;
+    int i = 0;
     for (source_line = 0; source_line < source_len; source_line++) {
         addr = GSLX680_FW[source_line].offset;
         if(addr == GSL_PAGE_REG) {
             dat2buf(GSLX680_FW[source_line].val, Wrbuf);
             i2c_write(addr, Wrbuf, 4);
-            i= 0;
+            i = 0;
             continue;
         }
 
         if(i == 0) {
-            faddr= addr;
+            faddr = addr;
         }
 
         dat2buf(GSLX680_FW[source_line].val, &Wrbuf[i]);
-        i+=4;
+        i += 4;
         if(i >= sizeof(Wrbuf)) {
             i2c_write(faddr, Wrbuf, i);
-            i= 0;
+            i = 0;
         }
     }
 }
@@ -262,15 +262,36 @@ void setup()
 
 void loop()
 {
-	GPIO_PinState s= HAL_GPIO_ReadPin(INTRPT_PORT, INTRPT_PIN);
-    if(s == 1) {
+    // // poll the interrupt TODO should be an actual interrupt
+    // GPIO_PinState s = HAL_GPIO_ReadPin(INTRPT_PORT, INTRPT_PIN);
+    // if(s == 1) {
+    //     HAL_GPIO_TogglePin(LED3_GPIO_PORT, LED3_PIN);
+    //     int n = read_data();
+    //     // for(int i = 0; i < n; i++) {
+    //     //     printf("%d %lu %lu\r\n", ts_event.coords[i].finger, ts_event.coords[i].x, ts_event.coords[i].y);
+    //     // }
+    //     // printf("---\r\n");
+    //     if(n > 0) ts_event.touch = 1;
+    // }
+}
+
+/**
+  * @brief EXTI line detection callbacks
+  * @param GPIO_Pin: Specifies the pins connected EXTI line
+  * @retval None
+  */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == INTRPT_PIN) {
         HAL_GPIO_TogglePin(LED3_GPIO_PORT, LED3_PIN);
         int n = read_data();
         // for(int i = 0; i < n; i++) {
         //     printf("%d %lu %lu\r\n", ts_event.coords[i].finger, ts_event.coords[i].x, ts_event.coords[i].y);
         // }
         // printf("---\r\n");
-        if(n > 0) ts_event.touch= 1;
+        if(n > 0) ts_event.touch = 1;
+
+    }else{
+        printf("Unknown interrupt pin: %d\r\n", GPIO_Pin);
     }
 }
-

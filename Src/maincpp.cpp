@@ -49,7 +49,6 @@ void setupLcd()
 // 15 lines x 49 characters
 void testLcd()
 {
-
 	// display a circle under each finger
 	if(ts_event.touch && ts_event.n_fingers > 0) {
 		ts_event.touch= 0;
@@ -62,15 +61,18 @@ void testLcd()
 				case 1: col= RA8875_RED; break;
 				case 2: col= RA8875_GREEN; break;
 				case 3: col= RA8875_BLUE; break;
-				case 4: col= RA8875_CYAN; break;
+				case 4: col= RA8875_YELLOW; break;
 				case 5: col= RA8875_WHITE; break;
-				default: col= RA8875_YELLOW;
+				default: col= RA8875_CYAN;
 			}
 			tft->fillCircle(x, y, 20, col);
         }
+
+    }else{
+    	ts_event.touch= 0;
     }
 
-
+    // User button is clear screen
 	GPIO_PinState s= HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
 	if(s == GPIO_PIN_SET) {
 		tft->fillScreen(RA8875_BLACK);
