@@ -15,6 +15,8 @@
 #define bitClear(value, bit) ((value) &= ~(1UL << (bit)))
 #define bitWrite(value, bit, bitvalue) (bitvalue ? bitSet(value, bit) : bitClear(value, bit))
 
+#define USESETMULTIPLEREGISTERS 1
+
 /**************************************************************************/
 /*!
 	Contructor
@@ -323,18 +325,17 @@ uint16_t RA8875::height(void) { return _height; }
 */
 /**************************************************************************/
 void RA8875::changeMode(enum RA8875modes m) {
-	writeCommand(RA8875_MWCR0);
 	if (m == GRAPHIC){
 		if (_currentMode == TEXT){//avoid useless consecutive calls
 			 _MWCR0Reg &= ~(1 << 7);
 			 _currentMode = GRAPHIC;
-			writeData(_MWCR0Reg);
+			writeCommandData(RA8875_MWCR0, _MWCR0Reg);
 		}
 	} else {
 		if (_currentMode == GRAPHIC){//avoid useless consecutive calls
 			_MWCR0Reg |= (1 << 7);
 			_currentMode = TEXT;
-			writeData(_MWCR0Reg);
+			writeCommandData(RA8875_MWCR0, _MWCR0Reg);
 		}
 	}
 }
@@ -626,7 +627,7 @@ void RA8875::setCursor(uint16_t x, uint16_t y) {
 	}
 	_cursorX = x;
 	_cursorY = y;
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_F_CURXL,RA8875_F_CURXH,RA8875_F_CURYL,RA8875_F_CURYH};
 	uint8_t data[] = {(uint8_t)(x & 0xFF),(uint8_t)(x >> 8),(uint8_t)(y & 0xFF),(uint8_t)(y >> 8)};
 	setMultipleRegisters(reg,data,4);
@@ -776,15 +777,11 @@ void RA8875::setFontSpacing(uint8_t spc){//ok
 }
 /**************************************************************************/
 /*!	PRIVATE
-		This is the function that write text. Still in development
-		NOTE: It identify correctly (when I got it) println and nl & rt
-
+		This is the function that write text. Optimized to do block SPI transfers
 */
 /**************************************************************************/
 void RA8875::textWrite(const char* buffer, uint16_t len) {
 	bool goBack = false;
-	uint16_t i,ny;
-	uint8_t t1,t2;
 
 	if (_currentMode == GRAPHIC){
 		changeMode(TEXT);
@@ -793,26 +790,15 @@ void RA8875::textWrite(const char* buffer, uint16_t len) {
 
 	if (len == 0) len = strlen(buffer);
 
-	writeCommand(RA8875_MRWC);
-	for (i=0;i<len;i++){
-		if (buffer[i] == '\r') continue;
-		if (buffer[i] == '\n') {
-			//get current y
-			t1 = readReg(RA8875_F_CURYL);
-			t2 = readReg(RA8875_F_CURYH);
-			//calc new line y
-			ny = (t2 << 8) | (t1 & 0xFF);
-			//update y
-			ny = ny + (16 + (16*_textScale))+_fontInterline;//TODO??
-			setCursor(0,ny);
+	uint8_t buf[len+3];
+	buf[0]= RA8875_CMDWRITE;
+	buf[1]= RA8875_MRWC;
+	buf[2]= RA8875_DATAWRITE;
+	memcpy(&buf[3], buffer, len);
 
-		} else {
-			writeData(buffer[i]);
-			waitBusy(0x80);
-		}
-
-		if (_textScale > 0) delay(1);
-	}
+	// we do a block SPI transfer of the text data
+	writeBlock(buf, len+3);
+	waitBusy(0x80);
 
 	if (goBack) changeMode(GRAPHIC);
 }
@@ -825,7 +811,7 @@ void RA8875::textWrite(const char* buffer, uint16_t len) {
 */
 /**************************************************************************/
 void RA8875::setForegroundColor(uint16_t color){
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_FGCR0,RA8875_FGCR1,RA8875_FGCR2};
 	uint8_t data[] = {(uint8_t)((color & 0xF800) >> 11),(uint8_t)((color & 0x07E0) >> 5),(uint8_t)(color & 0x001F)};
 	setMultipleRegisters(reg,data,3);
@@ -845,7 +831,7 @@ void RA8875::setForegroundColor(uint16_t color){
 */
 /**************************************************************************/
 void RA8875::setForegroundColor(uint8_t R,uint8_t G,uint8_t B){
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_FGCR0,RA8875_FGCR1,RA8875_FGCR2};
 	uint8_t data[] = {R,G,B};
 	setMultipleRegisters(reg,data,3);
@@ -863,7 +849,7 @@ void RA8875::setForegroundColor(uint8_t R,uint8_t G,uint8_t B){
 */
 /**************************************************************************/
 void RA8875::setBackgroundColor(uint16_t color){
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_BGCR0,RA8875_BGCR1,RA8875_BGCR2};
 	uint8_t data[] = {(uint8_t)((color & 0xF800) >> 11),(uint8_t)((color & 0x07E0) >> 5),(uint8_t)(color & 0x001F)};
 	setMultipleRegisters(reg,data,3);
@@ -883,7 +869,7 @@ void RA8875::setBackgroundColor(uint16_t color){
 */
 /**************************************************************************/
 void RA8875::setBackgroundColor(uint8_t R,uint8_t G,uint8_t B){
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_BGCR0,RA8875_BGCR1,RA8875_BGCR2};
 	uint8_t data[] = {R,G,B};
 	setMultipleRegisters(reg,data,3);
@@ -901,7 +887,7 @@ void RA8875::setBackgroundColor(uint8_t R,uint8_t G,uint8_t B){
 */
 /**************************************************************************/
 void RA8875::setTrasparentColor(uint16_t color){
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_BGTR0,RA8875_BGTR1,RA8875_BGTR2};
 	uint8_t data[] = {(uint8_t)((color & 0xF800) >> 11),(uint8_t)((color & 0x07E0) >> 5),(uint8_t)(color & 0x001F)};
 	setMultipleRegisters(reg,data,3);
@@ -921,7 +907,7 @@ void RA8875::setTrasparentColor(uint16_t color){
 */
 /**************************************************************************/
 void RA8875::setTrasparentColor(uint8_t R,uint8_t G,uint8_t B){
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_BGTR0,RA8875_BGTR1,RA8875_BGTR2};
 	uint8_t data[] = {R,G,B};
 	setMultipleRegisters(reg,data,3);
@@ -1019,7 +1005,7 @@ void RA8875::setXY(int16_t x, int16_t y) {
 
 void RA8875::setX(uint16_t x) {
 	if (x >= _width) x = _width-1;
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_CURH0,RA8875_CURH1};
 	uint8_t data[] = {(uint8_t)x,(uint8_t)(x >> 8)};
 	setMultipleRegisters(reg,data,2);
@@ -1032,7 +1018,7 @@ void RA8875::setX(uint16_t x) {
 
 void RA8875::setY(uint16_t y) {
 	if (y >= _height) y = _height-1;
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_CURV0,RA8875_CURV1};
 	uint8_t data[] = {(uint8_t)y,(uint8_t)(y >> 8)};
 	setMultipleRegisters(reg,data,2);
@@ -1078,7 +1064,7 @@ void RA8875::setScrollWindow(int16_t XL,int16_t XR ,int16_t YT ,int16_t YB){
 	checkLimitsHelper(XR,YB);
 
 	_scrollXL = XL; _scrollXR = XR; _scrollYT = YT; _scrollYB = YB;
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_HSSW0,RA8875_HSSW1,RA8875_HESW0,RA8875_HESW1,RA8875_VSSW0,RA8875_VSSW1,RA8875_VESW0,RA8875_VESW1};
 	uint8_t data[] = {(uint8_t)_scrollXL,(uint8_t)(_scrollXL >> 8),(uint8_t)_scrollXR,(uint8_t)(_scrollXR >> 8),(uint8_t)_scrollYT,(uint8_t)(_scrollYT >> 8),(uint8_t)_scrollYB,(uint8_t)(_scrollYB >> 8)};
 	setMultipleRegisters(reg,data,8);
@@ -1108,7 +1094,7 @@ void RA8875::scroll(uint16_t x,uint16_t y){
 	if (_scrollXL == 0 && _scrollXR == 0 && _scrollYT == 0 && _scrollYB == 0){
 		//do nothing, scroll window inactive
 	} else {
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_HOFS0,RA8875_HOFS1,RA8875_VOFS0,RA8875_VOFS1};
 	uint8_t data[] = {(uint8_t)x,(uint8_t)(x >> 8),(uint8_t)y,(uint8_t)(y >> 8)};
 	setMultipleRegisters(reg,data,4);
@@ -1583,7 +1569,7 @@ void RA8875::fillRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r
 void RA8875::circleHelper(int16_t x0, int16_t y0, int16_t r, uint16_t color, bool filled){
 	checkLimitsHelper(x0,y0);
 	if (r < 1) r = 1;
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_DCHR0,RA8875_DCHR1,RA8875_DCVR0,RA8875_DCVR1,RA8875_DCRR};
 	uint8_t data[] = {(uint8_t)x0,(uint8_t)(x0 >> 8),(uint8_t)y0,(uint8_t)(y0 >> 8),(uint8_t)r};
 	setMultipleRegisters(reg,data,5);
@@ -1617,8 +1603,7 @@ void RA8875::rectHelper(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t col
 
 	setForegroundColor(color);
 
-	writeCommand(RA8875_DCR);
-	filled == true ? writeData(0xB0) : writeData(0x90);
+	writeCommandData(RA8875_DCR, filled == true ? 0xB0 : 0x90);
 	waitPoll(RA8875_DCR, RA8875_DCR_LINESQUTRI_STATUS);
 }
 
@@ -1648,7 +1633,7 @@ void RA8875::triangleHelper(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int1
 
 	lineAddressing(x0,y0,x1,y1);
 	//p2
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_DTPH0,RA8875_DTPH1,RA8875_DTPV0,RA8875_DTPV1};
 	uint8_t data[] = {(uint8_t)x2,(uint8_t)(x2 >> 8),(uint8_t)y2,(uint8_t)(y2 >> 8)};
 	setMultipleRegisters(reg,data,4);
@@ -1709,7 +1694,7 @@ void RA8875::roundRectHelper(int16_t x, int16_t y, int16_t w, int16_t h, int16_t
 	checkLimitsHelper(w,h);
 
 	lineAddressing(x,y,w,h);
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_ELL_A0,RA8875_ELL_A1,RA8875_ELL_B0,RA8875_ELL_B1};
 	uint8_t data[] = {(uint8_t)r,(uint8_t)(r >> 8),(uint8_t)r,(uint8_t)(r >> 8)};
 	setMultipleRegisters(reg,data,4);
@@ -1732,7 +1717,7 @@ void RA8875::roundRectHelper(int16_t x, int16_t y, int16_t w, int16_t h, int16_t
 */
 /**************************************************************************/
 void RA8875::lineAddressing(int16_t x0, int16_t y0, int16_t x1, int16_t y1){
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_DLHSR0,RA8875_DLHSR1,RA8875_DLVSR0,RA8875_DLVSR1,RA8875_DLHER0,RA8875_DLHER1,RA8875_DLVER0,RA8875_DLVER1};
 	uint8_t data[] = {(uint8_t)x0,(uint8_t)(x0 >> 8),(uint8_t)y0,(uint8_t)(y0 >> 8),(uint8_t)x1,(uint8_t)(x1 >> 8),(uint8_t)y1,(uint8_t)(y1 >> 8)};
 	setMultipleRegisters(reg,data,8);
@@ -1758,7 +1743,7 @@ void RA8875::lineAddressing(int16_t x0, int16_t y0, int16_t x1, int16_t y1){
 */
 /**************************************************************************/
 void RA8875::curveAddressing(int16_t x0, int16_t y0, int16_t x1, int16_t y1){
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
+#if USESETMULTIPLEREGISTERS
 	uint8_t reg[] = {RA8875_DEHR0,RA8875_DEHR1,RA8875_DEVR0,RA8875_DEVR1,RA8875_ELL_A0,RA8875_ELL_A1,RA8875_ELL_B0,RA8875_ELL_B1};
 	uint8_t data[] = {(uint8_t)x0,(uint8_t)(x0 >> 8),(uint8_t)y0,(uint8_t)(y0 >> 8),(uint8_t)x1,(uint8_t)(x1 >> 8),(uint8_t)y1,(uint8_t)(y1 >> 8)};
 	setMultipleRegisters(reg,data,8);
@@ -2033,17 +2018,29 @@ void RA8875::sleep(bool sleep) {
 */
 /**************************************************************************/
 void  RA8875::writeReg(uint8_t reg, uint8_t val) {
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
-	SPI.beginTransaction(settings);
-	writecommand_cont(RA8875_CMDWRITE);
-	writecommand_last(reg);
-	writecommand_cont(RA8875_DATAWRITE);
-	writecommand_last(val);
-	SPI.endTransaction();
-#else
-	writeCommand(reg);
-	writeData(val);
-#endif
+	uint8_t buf[4];
+	buf[0]= RA8875_CMDWRITE;
+	buf[1]= reg;
+	buf[2]= RA8875_DATAWRITE;
+	buf[3]= val;
+
+	startSend();
+	HAL_StatusTypeDef s= HAL_SPI_Transmit(hspi, buf, 4, 100);
+	if(s != HAL_OK) {
+		printf("SPI transfer failed: %d\r\n", s);
+	}
+	endSend();
+}
+
+void RA8875::setMultipleRegisters(uint8_t reg[], uint8_t data[], uint8_t len) {
+	uint8_t buf[4];
+	for (uint8_t i=0;i<len;i++){
+		buf[0]= RA8875_CMDWRITE;
+		buf[1]= reg[i];
+		buf[2]= RA8875_DATAWRITE;
+		buf[3]= data[i];
+		writeBlock(buf, 4);
+	}
 }
 
 /**************************************************************************/
@@ -2054,8 +2051,19 @@ void  RA8875::writeReg(uint8_t reg, uint8_t val) {
 */
 /**************************************************************************/
 uint8_t  RA8875::readReg(uint8_t reg) {
-	writeCommand(reg);
-	return readData(false);
+	uint8_t buf[4], rbuf[4];
+	buf[0]= RA8875_CMDWRITE;
+	buf[1]= reg;
+	buf[2]= RA8875_DATAREAD;
+	buf[3]= 0;
+
+	startSend();
+	HAL_StatusTypeDef s= HAL_SPI_TransmitReceive(hspi, buf, rbuf, 4, 100);
+	if(s != HAL_OK) {
+		printf("SPI transfer failed: %d\r\n", s);
+	}
+	endSend();
+	return rbuf[3];
 }
 
 /**************************************************************************/
@@ -2066,20 +2074,18 @@ uint8_t  RA8875::readReg(uint8_t reg) {
 */
 /**************************************************************************/
 void  RA8875::writeData(uint8_t data) {
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
-	SPI.beginTransaction(settings);
-	writecommand_cont(RA8875_DATAWRITE);
-	writecommand_last(data);
-	SPI.endTransaction();
-#else
-	startSend();
-	SPItranfer(RA8875_DATAWRITE);
-	SPItranfer(data);
-	endSend();
-#endif
-
+	uint8_t buf[]= {RA8875_DATAWRITE, data};
+	writeBlock(buf, sizeof(buf));
 }
 
+void  RA8875::writeBlock(uint8_t *data, int len) {
+	startSend();
+	HAL_StatusTypeDef s= HAL_SPI_Transmit(hspi, data, len, 100);
+	if(s != HAL_OK) {
+		printf("SPI transfer failed: %d\r\n", s);
+	}
+	endSend();
+}
 /**************************************************************************/
 /*!
 		Write 16 bit data
@@ -2111,15 +2117,17 @@ void  RA8875::writeData16(uint16_t data) {
 uint8_t  RA8875::readData(bool stat)
 {
 	//SPI.setClockDivider(SPI_CLOCK_DIV8);//2Mhz (3.3Mhz max)
+	uint8_t buf[2], rbuf[2];
+	buf[0]= stat ? RA8875_CMDREAD : RA8875_DATAREAD;
+	buf[1]= 0;
 	startSend();
-	if (stat){
-		SPItranfer(RA8875_CMDREAD);
-	} else {
-		SPItranfer(RA8875_DATAREAD);
+
+	HAL_StatusTypeDef s= HAL_SPI_TransmitReceive(hspi, buf, rbuf, 2, 100);
+	if(s != HAL_OK) {
+		printf("SPI transfer failed: %d\r\n", s);
 	}
-	uint8_t x = SPItranfer(0x0);
 	endSend();
-	return x;
+	return rbuf[1];
 }
 
 /**************************************************************************/
@@ -2139,18 +2147,13 @@ uint8_t  RA8875::readStatus(void) {
 */
 /**************************************************************************/
 void RA8875::writeCommand(uint8_t d) {
-#if defined _SPI_HYPERDRIVE && (defined(__MK20DX128__) || defined(__MK20DX256__))
-	SPI.beginTransaction(settings);
-	writecommand_cont(RA8875_CMDWRITE);
-	writecommand_last(d);
-	SPI.endTransaction();
-#else
-	startSend();
-	SPItranfer(RA8875_CMDWRITE);
-	SPItranfer(d);
-	endSend();
-#endif
+	uint8_t buf[]= {RA8875_CMDWRITE, d};
+	writeBlock(buf, sizeof(buf));
+}
 
+void RA8875::writeCommandData(uint8_t c, uint8_t d) {
+	uint8_t buf[]= {RA8875_CMDWRITE, c, RA8875_DATAWRITE, d};
+	writeBlock(buf, sizeof(buf));
 }
 
 /**************************************************************************/
@@ -2192,6 +2195,49 @@ int RA8875::printf(const char* format, ...)
     char buffer[132]; // max length for display anyway
     int n= vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
-    this->textWrite(buffer, n);
+
+    // handle any \n in the stream
+    // TODO handle multiple \n anywhere in stream, and also \r
+    /*		if (buffer[i] == '\r') {
+			if(i == len-1 || buffer[i+1] != '\n') {
+				// standalone CR
+				uint16_t x, y;
+				getCursor(&x, &y);
+				setCursor(0,y);
+				if(i != len-1) writeCommand(RA8875_MRWC);
+			}else{
+				// ignore if followed by \n
+				continue;
+			}
+		} else if (buffer[i] == '\n') {  // always do \r\n, but should be an option
+			//get current y
+			t1 = readReg(RA8875_F_CURYL);
+			t2 = readReg(RA8875_F_CURYH);
+			//calc new line y
+			ny = (t2 << 8) | (t1 & 0xFF);
+			//update y
+			ny = ny + (16 + (16*_textScale))+_fontInterline;//TODO??
+			setCursor(0,ny);
+			if(i != len-1) writeCommand(RA8875_MRWC);
+    */
+    // this only handles a \n at the end of the stream,
+    char *p= strchr(buffer, '\n');
+    if(p == nullptr) {
+    	this->textWrite(buffer, n);
+    }else{
+    	int l= p-buffer;
+    	if(l > 0){
+    		this->textWrite(buffer, l);
+    	}
+		//get current y
+		uint8_t t1 = readReg(RA8875_F_CURYL);
+		uint8_t t2 = readReg(RA8875_F_CURYH);
+		//calc new line y
+		uint16_t ny = (t2 << 8) | (t1 & 0xFF);
+		//update y
+		ny = ny + (16 + (16*_textScale))+_fontInterline;//TODO??
+		setCursor(0,ny);
+    }
+
     return n;
 }

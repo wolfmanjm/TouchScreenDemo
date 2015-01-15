@@ -237,9 +237,11 @@ void println(const char* str) { print(str); print("\r\n"); };
 	uint8_t 	readReg(uint8_t reg);
 	//void    	writeCommand(uint8_t d);
 	void    	writeData(uint8_t data);
+	void    	writeBlock(uint8_t *data, int len);
+	void        writeCommandData(uint8_t c, uint8_t d);
 	//void  		writeData16(uint16_t data);
 	uint8_t 	readData(bool stat=false);
-
+	void        setMultipleRegisters(uint8_t reg[], uint8_t data[], uint8_t len);
 
 	bool 	waitPoll(uint8_t r, uint8_t f);//from adafruit
 	void 		waitBusy(uint8_t res=0x80);//0x80, 0x40(BTE busy), 0x01(DMA busy)

@@ -52,7 +52,7 @@ pin | function  | Arduino Uno
 
 typedef uint8_t bool;
 
-struct _ts_event ts_event;
+static struct _ts_event ts_event;
 
 extern I2C_HandleTypeDef hi2c1;
 bool i2c_write(uint8_t reg, uint8_t *buf, int cnt)
@@ -75,17 +75,20 @@ bool i2c_write(uint8_t reg, uint8_t *buf, int cnt)
     return r == HAL_OK;
 }
 
+uint32_t i2c_read_errors= 0;
 int i2c_read(uint8_t reg, uint8_t *buf, int cnt)
 {
     HAL_StatusTypeDef r;
     r = HAL_I2C_Master_Transmit(&hi2c1, GSLX680_I2C_ADDR, &reg, 1, 1000);
     if(r != 0) {
-        printf("i2c read1 error: %d %02X\r\n", r, reg);
+        //printf("i2c read1 error: %d %02X\r\n", r, reg);
+        i2c_read_errors++;
     }
 
     r = HAL_I2C_Master_Receive(&hi2c1, GSLX680_I2C_ADDR, buf, cnt, 1000);
     if(r != HAL_OK) {
-        printf("i2c read2 error: %d %02X\r\n", r, reg);
+        //printf("i2c read2 error: %d %02X\r\n", r, reg);
+        i2c_read_errors++;
     }
     return cnt;
 }
@@ -253,7 +256,7 @@ void setup()
     delay(100);
     init_chip();
 
-#if 0
+#if 1
     uint8_t buf[4];
     i2c_read(0xB0, buf, 4);
     printf("%02X, %02X, %02X,%02X\r\n", buf[0], buf[1], buf[2], buf[3]);
@@ -275,6 +278,7 @@ void loop()
     // }
 }
 
+extern void add_touch_event(struct _ts_event*);
 /**
   * @brief EXTI line detection callbacks
   * @param GPIO_Pin: Specifies the pins connected EXTI line
@@ -289,7 +293,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         //     printf("%d %lu %lu\r\n", ts_event.coords[i].finger, ts_event.coords[i].x, ts_event.coords[i].y);
         // }
         // printf("---\r\n");
-        if(n > 0) ts_event.touch = 1;
+        if(n > 0) {
+            add_touch_event(&ts_event);
+        }
 
     }else{
         printf("Unknown interrupt pin: %d\r\n", GPIO_Pin);
