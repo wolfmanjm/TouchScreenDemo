@@ -46,7 +46,9 @@ void setupLcd()
 
 
 #include "RingBuffer.h"
-RingBuffer<struct _ts_event, 16> touch_events;
+using touch_event_t = struct _ts_event;
+template<class T> using touch_events_t = RingBuffer<T, 16>;
+touch_events_t<touch_event_t> touch_events;
 
 extern "C" void add_touch_event(struct _ts_event *e)
 {
@@ -62,7 +64,7 @@ void testLcd()
 {
 	int cnt= 0;
 	while(!touch_events.empty()) {
-		struct _ts_event tse;
+		touch_event_t tse;
 		touch_events.pop_front(tse);
 
 		// display a circle under each finger

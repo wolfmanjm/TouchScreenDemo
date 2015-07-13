@@ -184,6 +184,17 @@ void startup_chip(void)
     i2c_write(0xe0, buf, 1);
 }
 
+bool test_fw_loaded()
+{
+    uint8_t buf[4];
+    buf[0]= 0x00;
+    i2c_write(GSL_PAGE_REG, buf, 1);
+    i2c_read(0x00, buf, 4);
+    i2c_read(0x00, buf, 4);
+    //printf("%02X, %02X, %02X,%02X\r\n", buf[0], buf[1], buf[2], buf[3]);
+    return (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 && buf[3] == 0x01);
+}
+
 void init_chip()
 {
 #if 1
@@ -202,9 +213,9 @@ void init_chip()
     reset_chip();
     printf("  load_fw: %lu\r\n", HAL_GetTick());
     load_fw();
-    //startup_chip();
     printf("  reset_chip2: %lu\r\n", HAL_GetTick());
     reset_chip();
+    //startup_chip();
     printf("  startup_chip\r\n");
     startup_chip();
     printf("  init done\r\n");
@@ -251,16 +262,14 @@ int read_data(void)
 void setup()
 {
     delay(200);
-    printf("Starting touch screen...\r\n");
-    HAL_GPIO_WritePin(WAKE_PORT, WAKE_PIN, 0);
-    delay(100);
-    init_chip();
-
-#if 1
-    uint8_t buf[4];
-    i2c_read(0xB0, buf, 4);
-    printf("%02X, %02X, %02X,%02X\r\n", buf[0], buf[1], buf[2], buf[3]);
-#endif
+    // if(test_fw_loaded()) {
+    //     printf("touch screen already running\r\n");
+    // }else{
+        printf("Starting touch screen...\r\n");
+        HAL_GPIO_WritePin(WAKE_PORT, WAKE_PIN, 0);
+        delay(100);
+        init_chip();
+    // }
 }
 
 void loop()
